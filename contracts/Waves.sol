@@ -2,80 +2,81 @@
 
 pragma solidity 0.8.28;
 
-import "../interfaces/IERC721.sol";
+import "./interfaces/IERC721.sol";
 
-contract Waves {
-    struct NFT {
+contract Waves is ERC721 {
+    struct Token {
         bytes32 content;
     }
 
-    NFT[] private NFTs;
-    mapping(address => uint) private NFTOwned;
-    mapping(uint => address) private OwnerByNFT;
-    mapping(address => mapping(address => bool)) private ApprovedForAllByAddress;
-    mapping(uint => address) private approvedByNFT;
+    Token[] private tokens;
+    mapping(address => uint) private balances;
+    mapping(uint => address) private owners;
+    mapping(address => mapping(address => bool)) private operators;
+    mapping(uint => address) private approvers;
 
-    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
-    event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
-    event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
-
-    error InvalidAddressRequested();
-    error InvalidOwnership();
+    error AddressZero();
+    error InvalidTokenID();
+    error InvalidOwner();
     error NotAuthorized();
 
-    constructor (bytes32[] memory nfts) {
-        for (uint256 i = 0; i < nfts.length; i++) {
-            NFTs.push(
-                NFT(
-                    nfts[i]
+    constructor (bytes32[] memory tokenParams) {
+        for (uint256 i = 0; i < tokenParams.length; i++) {
+            tokens.push(
+                Token(
+                    tokenParams[i]
                 )
             );
-            OwnerByNFT[i] = msg.sender;
-            NFTOwned[msg.sender] += 1;
+            owners[i] = msg.sender;
+            balances[msg.sender] += 1;
             emit Transfer(address(0), msg.sender, i);
         }
     }
 
     function balanceOf(address owner) external view returns (uint256) {
-        require(owner != address(0), InvalidAddressRequested());
-        return NFTOwned[owner];
+        require(owner != address(0), AddressZero());
+        return balances[owner];
     }
 
     function ownerOf(uint256 tokenId) external view returns (address) {
-        require(OwnerByNFT[tokenId] != address(0), InvalidOwnership());
-        return OwnerByNFT[tokenId];
+        require(owners[tokenId] != address(0), AddressZero());
+        return owners[tokenId];
     }
 
     function transferFrom(address from, address to, uint256 tokenId) external payable {
+        require(tokenId < tokens.length, InvalidTokenID());
         require(
-            msg.sender == OwnerByNFT[tokenId] || ApprovedForAllByAddress[from][msg.sender] || approvedByNFT[tokenId] == msg.sender, NotAuthorized()
+            msg.sender == owners[tokenId] || operators[from][msg.sender] || approvers[tokenId] == msg.sender, NotAuthorized()
         );
-        OwnerByNFT[tokenId] = to;
-        approvedByNFT[tokenId] = address(0);
-        NFTOwned[from] -= 1;
-        NFTOwned[to] += 1;
+        require(owners[tokenId] == from, InvalidOwner());
+        require(to != address(0), AddressZero());
+        owners[tokenId] = to;
+        approvers[tokenId] = address(0);
+        balances[from] -= 1;
+        balances[to] += 1;
         emit Transfer(from, to, tokenId);
     }
 
     function approve(address approved, uint256 tokenId) external payable {
         require(
-            msg.sender == OwnerByNFT[tokenId] || ApprovedForAllByAddress[OwnerByNFT[tokenId]][msg.sender], NotAuthorized()
+            msg.sender == owners[tokenId] || operators[owners[tokenId]][msg.sender], NotAuthorized()
         );
-        approvedByNFT[tokenId] = approved;
-        emit Approval(OwnerByNFT[tokenId], approved, tokenId);
+        approvers[tokenId] = approved;
+        emit Approval(owners[tokenId], approved, tokenId);
     }
 
     function setApprovalForAll(address operator, bool approved) external {
-        ApprovedForAllByAddress[msg.sender][operator] = approved;
+        operators[msg.sender][operator] = approved;
         emit ApprovalForAll(msg.sender, operator, approved);
     }
 
     function getApproved(uint256 tokenId) external view returns (address) {
-        return approvedByNFT[tokenId];
+        require(tokenId < tokens.length, InvalidTokenID());
+        return approvers[tokenId];
     }
 
     function isApprovedForAll(address owner, address operator) external view returns (bool) {
-        return ApprovedForAllByAddress[owner][operator];
+        return operators[owner][operator];
     }
 
 }
